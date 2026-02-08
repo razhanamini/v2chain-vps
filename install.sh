@@ -10,237 +10,230 @@ echo "=========================================="
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
 NC='\033[0m' # No Color
-
-# Check if running as root
-#if [ "$EUID" -eq 0 ]; then 
- # echo -e "${RED}⚠️  Please run as non-root user, not with sudo${NC}"
-  #exit 1
-#fi
 
 # Configuration
 REPO_URL="https://github.com/razhanamini/v2chain-vps.git"
 INSTALL_DIR="$HOME/v2chain-vps"
 API_PORT="5000"
+XRAY_VERSION="26.2.4"
 
 # Generate a random API token
 generate_token() {
-  openssl rand -hex 32 2>/dev/null || echo "fallback-token-$(date +%s)"
+  if command -v openssl > /dev/null 2>&1; then
+    openssl rand -hex 32
+  else
+    # Fallback if openssl is not available
+    echo "fallback-token-$(date +%s)-$(head /dev/urandom | tr -dc A-Za-z0-9 | head -c 32)"
+  fi
+}
+
+# Print colored message
+print_status() {
+  echo -e "${BLUE}[*]${NC} $1"
+}
+
+print_success() {
+  echo -e "${GREEN}[✓]${NC} $1"
+}
+
+print_warning() {
+  echo -e "${YELLOW}[!]${NC} $1"
+}
+
+print_error() {
+  echo -e "${RED}[✗]${NC} $1"
+}
+
+# Setup Docker permissions
+setup_docker_permissions() {
+  print_status "Setting up Docker permissions..."
+  
+  # Check if user is in docker group
+  if id -nG "$USER" | grep -qw docker; then
+    print_success "User already in docker group"
+    return 0
+  fi
+  
+  print_warning "Adding user to docker group..."
+  sudo usermod -aG docker "$USER"
+  
+  print_warning "You need to log out and back in for changes to take effect."
+  print_warning "Alternatively, you can run: newgrp docker"
+  
+  read -p "Apply group changes now? (y/n): " -n 1 -r
+  echo
+  if [[ $REPLY =~ ^[Yy]$ ]]; then
+    # Try to apply group changes
+    if newgrp docker <<< "echo 'Docker group applied'" 2>/dev/null; then
+      print_success "Docker group applied successfully"
+    else
+      print_warning "Could not apply group changes immediately. Please log out and back in."
+    fi
+  fi
+  
+  return 0
+}
+
+# Check if Docker daemon is accessible
+check_docker_access() {
+  if docker info > /dev/null 2>&1; then
+    return 0
+  else
+    return 1
+  fi
+}
+
+# Install Docker automatically
+install_docker() {
+  print_status "Installing Docker..."
+  
+  # Detect OS
+  if [ -f /etc/os-release ]; then
+    . /etc/os-release
+    OS=$ID
+  else
+    print_error "Cannot detect OS"
+    exit 1
+  fi
+  
+  case $OS in
+    ubuntu|debian)
+      print_status "Detected Ubuntu/Debian system"
+      sudo apt-get update
+      sudo apt-get install -y apt-transport-https ca-certificates curl software-properties-common
+      curl -fsSL https://download.docker.com/linux/$OS/gpg | sudo apt-key add -
+      sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/$OS $(lsb_release -cs) stable"
+      sudo apt-get update
+      sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+      ;;
+    centos|rhel|fedora)
+      print_status "Detected CentOS/RHEL/Fedora system"
+      sudo yum install -y yum-utils
+      sudo yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+      sudo yum install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+      sudo systemctl start docker
+      sudo systemctl enable docker
+      ;;
+    *)
+      print_error "Unsupported OS: $OS"
+      exit 1
+      ;;
+  esac
+  
+  # Add user to docker group
+  sudo usermod -aG docker "$USER"
+  print_success "Docker installed"
 }
 
 # Check dependencies
 check_deps() {
-  echo "🔍 Checking dependencies..."
+  print_status "Checking dependencies..."
   
   local missing=()
-
-   # Check Docker
-  if ! command -v docker &> /dev/null; then
-    missing+=("docker")
-  fi
-  
-  if [ ${#missing[@]} -gt 0 ]; then
-    # ... install docker if missing
-  else
-    # Docker is installed, check permissions
-    setup_docker_permissions
-  fi
-  
-  
-  # Check Docker
-  if ! command -v docker &> /dev/null; then
-    missing+=("docker")
-  fi
-  
-  # Check Docker Compose
-  if ! command -v docker-compose &> /dev/null; then
-    missing+=("docker-compose")
-  fi
   
   # Check Git
   if ! command -v git &> /dev/null; then
     missing+=("git")
   fi
   
-  # Check Node.js (for building if needed)
-  if ! command -v node &> /dev/null; then
-    echo -e "${YELLOW}⚠️  Node.js not found (optional for development)${NC}"
+  # Check Docker
+  if ! command -v docker &> /dev/null; then
+    missing+=("docker")
+  fi
+  
+  # Check Docker Compose (or Docker Compose Plugin)
+  if ! command -v docker-compose &> /dev/null && ! docker compose version &> /dev/null; then
+    missing+=("docker-compose")
   fi
   
   if [ ${#missing[@]} -gt 0 ]; then
-    echo -e "${RED}❌ Missing dependencies: ${missing[*]}${NC}"
-    echo "Please install:"
+    print_error "Missing dependencies: ${missing[*]}"
     
     for dep in "${missing[@]}"; do
       case $dep in
+        git)
+          print_status "Installing Git..."
+          sudo apt-get install -y git 2>/dev/null || sudo yum install -y git 2>/dev/null
+          ;;
         docker)
-          echo "  Docker: https://docs.docker.com/engine/install/"
+          read -p "Install Docker automatically? (y/n): " -n 1 -r
+          echo
+          if [[ $REPLY =~ ^[Yy]$ ]]; then
+            install_docker
+          else
+            print_error "Docker is required. Please install it manually."
+            exit 1
+          fi
           ;;
         docker-compose)
-          echo "  Docker Compose: https://docs.docker.com/compose/install/"
-          ;;
-        git)
-          echo "  Git: sudo apt install git"
+          print_status "Installing Docker Compose..."
+          if command -v docker &> /dev/null && docker compose version &> /dev/null; then
+            print_success "Docker Compose plugin already available"
+          else
+            sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" \
+              -o /usr/local/bin/docker-compose
+            sudo chmod +x /usr/local/bin/docker-compose
+          fi
           ;;
       esac
     done
+  fi
+  
+  # Check Docker permissions
+  if ! check_docker_access; then
+    setup_docker_permissions
     
-    # Offer to install Docker automatically
-    if [[ " ${missing[*]} " == *" docker "* ]]; then
-      read -p "Install Docker automatically? (y/n): " -n 1 -r
-      echo
-      if [[ $REPLY =~ ^[Yy]$ ]]; then
-        install_docker
+    # Check again
+    if ! check_docker_access; then
+      print_warning "Still cannot access Docker. Trying with sudo..."
+      if sudo docker info > /dev/null 2>&1; then
+        print_warning "Docker accessible with sudo. Some operations may require sudo."
       else
+        print_error "Cannot access Docker daemon. Please ensure Docker is running and permissions are set."
         exit 1
       fi
-    else
-      exit 1
     fi
   fi
   
-  echo -e "${GREEN}✅ All dependencies found${NC}"
+  print_success "All dependencies satisfied"
 }
 
-#  docker:
-setup_docker_permissions() {
-  echo "🔧 Setting up Docker permissions..."
-  
-  # Check if user is in docker group
-  if groups $USER | grep -q '\bdocker\b'; then
-    echo -e "${GREEN}✅ User already in docker group${NC}"
-  else
-    echo -e "${YELLOW}⚠️  Adding user to docker group...${NC}"
-    sudo usermod -aG docker $USER
-    
-    echo -e "${YELLOW}⚠️  You need to log out and back in for changes to take effect.${NC}"
-    echo -e "${YELLOW}   Alternatively, you can run: newgrp docker${NC}"
-    
-    read -p "Apply group changes now? (y/n): " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-      # Apply group changes without logout
-      newgrp docker << 'EOF'
-      echo "Docker group applied. Continuing installation..."
-EOF
-      # The above might not work perfectly, so we'll continue anyway
-    fi
-  fi
-}
-
-# Install Docker automatically
-install_docker() {
-  echo "📦 Installing Docker..."
-  
-  # Detect OS
-  if [ -f /etc/os-release ]; then
-    . /etc/os-release
-    OS=$NAME
-  else
-    OS=$(uname -s)
-  fi
-  
-  case $OS in
-    *Ubuntu*|*Debian*)
-      sudo apt update
-      sudo apt install -y apt-transport-https ca-certificates curl software-properties-common
-      curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
-      sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
-      sudo apt update
-      sudo apt install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
-      sudo usermod -aG docker $USER
-      ;;
-    *CentOS*|*Fedora*|*RHEL*)
-      sudo yum install -y yum-utils
-      sudo yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
-      sudo yum install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
-      sudo systemctl start docker
-      sudo systemctl enable docker
-      sudo usermod -aG docker $USER
-      ;;
-    *)
-      echo -e "${RED}❌ Unsupported OS. Please install Docker manually.${NC}"
-      exit 1
-      ;;
-  esac
-  
-  echo -e "${GREEN}✅ Docker installed${NC}"
-  echo "⚠️  Please log out and back in for group changes to take effect, or run:"
-  echo "   newgrp docker"
-  
-  read -p "Continue anyway? (y/n): " -n 1 -r
-  echo
-  if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-    exit 0
-  fi
-}
-
-# Setup Xray directories and permissions
-setup_xray_dirs() {
-  echo "📁 Setting up Xray directories..."
-  
-  # Create directories if they don't exist
-  sudo mkdir -p /etc/xray /var/lib/xray
-  
-  # Check if Xray is already installed
-  if command -v xray &> /dev/null; then
-    echo -e "${GREEN}✅ Xray is already installed${NC}"
-  else
-    echo -e "${YELLOW}⚠️  Xray not found. Please install Xray first.${NC}"
-    echo "Quick install:"
-    echo "  bash -c \"$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)\" @ install"
-    read -p "Install Xray now? (y/n): " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-      install_xray
-    fi
-  fi
-  
-  # Set permissions
-  sudo chown -R $USER:$USER /etc/xray /var/lib/xray 2>/dev/null || true
-  sudo chmod 755 /etc/xray /var/lib/xray
-  
-  echo -e "${GREEN}✅ Directories configured${NC}"
-}
-
-# Install Xray
-#!/bin/bash
-# install.sh - Updated Xray installation with specific version
-
-# ... [previous code remains the same] ...
-
-# Install Xray with specific version (26.2.4)
+# Install Xray with specific version
 install_xray() {
-  echo "📦 Installing Xray version 26.2.4..."
+  print_status "Installing Xray version $XRAY_VERSION..."
   
   # Create temporary directory
   TEMP_DIR=$(mktemp -d)
   cd "$TEMP_DIR"
   
   # Download the specific version
-  echo "Downloading Xray 26.2.4..."
-  if ! curl -L -o Xray-linux-64.zip "https://github.com/XTLS/Xray-core/releases/download/v26.2.4/Xray-linux-64.zip"; then
-    echo -e "${RED}❌ Failed to download Xray${NC}"
+  print_status "Downloading Xray $XRAY_VERSION..."
+  if ! curl -L -o Xray-linux-64.zip "https://github.com/XTLS/Xray-core/releases/download/v${XRAY_VERSION}/Xray-linux-64.zip"; then
+    print_error "Failed to download Xray"
     return 1
   fi
   
   # Extract
-  echo "Extracting..."
-  unzip -q Xray-linux-64.zip
-  if [ $? -ne 0 ]; then
-    echo -e "${RED}❌ Failed to extract Xray${NC}"
+  print_status "Extracting..."
+  if ! unzip -q Xray-linux-64.zip; then
+    print_error "Failed to extract Xray"
     return 1
   fi
   
-  # Install
-  echo "Installing..."
+  # Stop existing Xray service
+  print_status "Stopping existing Xray service..."
   sudo systemctl stop xray 2>/dev/null || true
+  
+  # Install
+  print_status "Installing Xray binary..."
   sudo cp xray /usr/local/bin/
   sudo chmod +x /usr/local/bin/xray
   
   # Create systemd service if it doesn't exist
   if [ ! -f /etc/systemd/system/xray.service ]; then
-    echo "Creating systemd service..."
+    print_status "Creating systemd service..."
     sudo tee /etc/systemd/system/xray.service > /dev/null << 'EOF'
 [Unit]
 Description=Xray Service
@@ -266,145 +259,17 @@ EOF
   # Create config directory
   sudo mkdir -p /etc/xray
   
-  # Create default config if it doesn't exist
-  if [ ! -f /etc/xray/config.json ]; then
-    echo "Creating default config..."
-    sudo tee /etc/xray/config.json > /dev/null << 'EOF'
-{
-  "log": {
-    "loglevel": "warning"
-  },
-  "api": {
-    "tag": "api",
-    "services": [
-      "HandlerService",
-      "LoggerService",
-      "StatsService"
-    ]
-  },
-  "stats": {
-    "enabled": true,
-    "statsFile": "/var/lib/xray/stats.json"
-  },
-  "policy": {
-    "levels": {
-      "0": {
-        "handshake": 12,
-        "connIdle": 900,
-        "downlinkOnly": 20,
-        "uplinkOnly": 8,
-        "bufferSize": 20480,
-        "statsUserUplink": true,
-        "statsUserDownlink": true
-      }
-    },
-    "system": {
-      "statsInboundUplink": true,
-      "statsInboundDownlink": true,
-      "statsOutboundUplink": true,
-      "statsOutboundDownlink": true
-    }
-  },
-  "inbounds": [
-    {
-      "port": 8445,
-      "protocol": "vless",
-      "settings": {
-        "clients": [
-          {
-            "id": "7e64f9bf-d733-4dd0-a642-3a05d1cc3f0e",
-            "email": "user1@gmail.com",
-            "flow": "",
-            "limitIp": 0,
-            "totalGB": 100,
-            "expireTime": 1772286796225,
-            "createdAt": "2026-02-08T13:53:16.225Z"
-          }
-        ],
-        "decryption": "none"
-      },
-      "streamSettings": {
-        "network": "tcp",
-        "security": "reality",
-        "realitySettings": {
-          "dest": "play.google.com:443",
-          "serverNames": [
-            "play.google.com"
-          ],
-          "privateKey": "KJYm4jdWfD4VNZ5D98qVQ0WwM8BHge8sBpeuEo9ePX0",
-          "shortIds": [
-            "6ba85179e30d4fc2"
-          ],
-          "fingerprint": "chrome",
-          "spiderX": ""
-        },
-        "tcpSettings": {
-          "header": {
-            "type": "none"
-          },
-          "acceptProxyProtocol": false
-        }
-      },
-      "sniffing": {
-        "enabled": true,
-        "destOverride": [
-          "http",
-          "tls",
-          "quic"
-        ]
-      },
-      "tag": "vless-reality-inbound"
-    },
-    {
-      "listen": "127.0.0.1",
-      "port": 10085,
-      "protocol": "dokodemo-door",
-      "settings": {
-        "address": "127.0.0.1",
-        "port": 62789,
-        "network": "tcp"
-      },
-      "tag": "api-inbound"
-    }
-  ],
-  "outbounds": [
-    {
-      "protocol": "freedom",
-      "settings": {},
-      "tag": "direct"
-    },
-    {
-      "protocol": "blackhole",
-      "settings": {},
-      "tag": "block"
-    }
-  ],
-  "routing": {
-    "domainStrategy": "AsIs",
-    "rules": [
-      {
-        "inboundTag": [
-          "api-inbound"
-        ],
-        "outboundTag": "api",
-        "type": "field"
-      }
-    ]
-  }
-}
-EOF
-  fi
-  
   # Enable and start service
+  print_status "Starting Xray service..."
   sudo systemctl daemon-reload
   sudo systemctl enable xray
   sudo systemctl start xray
   
   # Verify installation
-  if /usr/local/bin/xray version | grep -q "26.2.4"; then
-    echo -e "${GREEN}✅ Xray 26.2.4 installed successfully${NC}"
+  if /usr/local/bin/xray version | grep -q "$XRAY_VERSION"; then
+    print_success "Xray $XRAY_VERSION installed successfully"
   else
-    echo -e "${YELLOW}⚠️  Xray installed but version check failed${NC}"
+    print_warning "Xray installed but version check failed"
   fi
   
   # Cleanup
@@ -412,91 +277,111 @@ EOF
   rm -rf "$TEMP_DIR"
 }
 
-# Alternative method using the official installer with version
-install_xray_alternative() {
-  echo "📦 Installing Xray 26.2.4 (alternative method)..."
-  
-  # Download the official installer
-  curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh -o /tmp/install-release.sh
-  
-  # Make it executable
-  chmod +x /tmp/install-release.sh
-  
-  # Install specific version
-  sudo bash /tmp/install-release.sh -v v26.2.4
-  
-  if [ $? -eq 0 ]; then
-    echo -e "${GREEN}✅ Xray 26.2.4 installed${NC}"
-  else
-    echo -e "${RED}❌ Failed to install Xray${NC}"
-  fi
-  
-  # Cleanup
-  rm /tmp/install-release.sh
-}
-
-# Updated check for Xray with version verification
+# Setup Xray directories and permissions
 setup_xray_dirs() {
-  echo "📁 Setting up Xray directories..."
+  print_status "Setting up Xray directories..."
   
   # Create directories if they don't exist
   sudo mkdir -p /etc/xray /var/lib/xray
   
-  # Check if Xray is already installed and is version 26.2.4
+  # Check if Xray is already installed
   if command -v xray &> /dev/null; then
-    CURRENT_VERSION=$(xray version | grep -oP 'Xray \K[0-9.]+' | head -1)
-    if [ "$CURRENT_VERSION" = "26.2.4" ]; then
-      echo -e "${GREEN}✅ Xray 26.2.4 is already installed${NC}"
+    CURRENT_VERSION=$(xray version 2>/dev/null | grep -oP 'Xray \K[0-9.]+' | head -1 || echo "unknown")
+    if [ "$CURRENT_VERSION" = "$XRAY_VERSION" ]; then
+      print_success "Xray $XRAY_VERSION is already installed"
     else
-      echo -e "${YELLOW}⚠️  Found Xray version $CURRENT_VERSION, need version 26.2.4${NC}"
-      read -p "Upgrade to version 26.2.4? (y/n): " -n 1 -r
+      print_warning "Found Xray version $CURRENT_VERSION, need version $XRAY_VERSION"
+      read -p "Install/upgrade to version $XRAY_VERSION? (y/n): " -n 1 -r
       echo
       if [[ $REPLY =~ ^[Yy]$ ]]; then
         install_xray
       fi
     fi
   else
-    echo -e "${YELLOW}⚠️  Xray not found. Installing version 26.2.4...${NC}"
-    install_xray
+    print_warning "Xray not found."
+    read -p "Install Xray $XRAY_VERSION now? (y/n): " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+      install_xray
+    else
+      print_warning "Xray is required for this application to work properly."
+    fi
   fi
   
-  # Set permissions
-  sudo chown -R $USER:$USER /etc/xray /var/lib/xray 2>/dev/null || true
-  sudo chmod 755 /etc/xray /var/lib/xray
+  # Set permissions (try without sudo first)
+  print_status "Setting directory permissions..."
+  if sudo chown -R "$USER:$USER" /etc/xray /var/lib/xray 2>/dev/null; then
+    print_success "Directory permissions set"
+  else
+    print_warning "Could not change ownership, continuing with current permissions"
+  fi
   
-  echo -e "${GREEN}✅ Directories configured${NC}"
+  sudo chmod 755 /etc/xray /var/lib/xray
 }
 
 # Clone or update repository
 get_code() {
-  echo "📥 Getting source code..."
+  print_status "Getting source code..."
   
   if [ -d "$INSTALL_DIR" ]; then
-    echo "Updating existing installation..."
+    print_status "Updating existing installation..."
     cd "$INSTALL_DIR"
-    git pull origin main
+    if git pull origin main; then
+      print_success "Repository updated"
+    else
+      print_warning "Could not update repository, using existing code"
+    fi
   else
-    echo "Cloning repository..."
-    git clone "$REPO_URL" "$INSTALL_DIR"
-    cd "$INSTALL_DIR"
+    print_status "Cloning repository..."
+    if git clone "$REPO_URL" "$INSTALL_DIR"; then
+      print_success "Repository cloned"
+    else
+      print_error "Failed to clone repository"
+      exit 1
+    fi
   fi
   
-  echo -e "${GREEN}✅ Code downloaded${NC}"
+  cd "$INSTALL_DIR"
 }
 
 # Build Docker image
 build_image() {
-  echo "🐳 Building Docker image..."
+  print_status "Building Docker image..."
   cd "$INSTALL_DIR"
-  docker-compose build --no-cache
-  echo -e "${GREEN}✅ Image built${NC}"
+  
+  # Check if we can access Docker
+  if check_docker_access; then
+    if docker-compose build --no-cache; then
+      print_success "Docker image built successfully"
+    else
+      print_warning "Failed to build with docker-compose, trying with sudo..."
+      if sudo docker-compose build --no-cache; then
+        print_success "Docker image built with sudo"
+      else
+        print_error "Failed to build Docker image"
+        exit 1
+      fi
+    fi
+  elif sudo docker info > /dev/null 2>&1; then
+    print_warning "Building with sudo..."
+    if sudo docker-compose build --no-cache; then
+      print_success "Docker image built with sudo"
+    else
+      print_error "Failed to build Docker image"
+      exit 1
+    fi
+  else
+    print_error "Cannot access Docker daemon"
+    exit 1
+  fi
 }
 
 # Create environment file
 create_env() {
-  echo "⚙️  Creating configuration..."
+  print_status "Creating configuration..."
   
-  local api_token=$(generate_token)
+  local api_token
+  api_token=$(generate_token)
   
   cat > "$INSTALL_DIR/.env" << EOF
 # Xray Manager Configuration
@@ -506,40 +391,57 @@ HOST_GID=$(id -g)
 NODE_ENV=production
 EOF
   
-  echo -e "${GREEN}✅ Configuration created${NC}"
-  echo -e "${YELLOW}📋 API Token: $api_token${NC}"
+  print_success "Configuration created"
+  print_warning "API Token: $api_token"
   echo "  Save this token for API authentication!"
 }
 
 # Start services
 start_services() {
-  echo "🚀 Starting services..."
+  print_status "Starting services..."
   cd "$INSTALL_DIR"
   
   # Stop if already running
-  docker-compose down 2>/dev/null || true
+  docker-compose down 2>/dev/null || sudo docker-compose down 2>/dev/null || true
   
   # Start services
-  docker-compose up -d
-  
-  # Wait for service to start
-  echo "⏳ Waiting for service to start..."
-  sleep 5
-  
-  # Check if running
-  if curl -s http://localhost:$API_PORT/health > /dev/null 2>&1; then
-    echo -e "${GREEN}✅ Service is running!${NC}"
+  if check_docker_access; then
+    docker-compose up -d
   else
-    echo -e "${YELLOW}⚠️  Service might still be starting...${NC}"
-    sleep 5
+    sudo docker-compose up -d
   fi
   
-  echo -e "${GREEN}✅ Installation complete!${NC}"
+  # Wait for service to start
+  print_status "Waiting for service to start..."
+  for i in {1..10}; do
+    if curl -s "http://localhost:$API_PORT/health" > /dev/null 2>&1; then
+      print_success "Service is running!"
+      return 0
+    fi
+    echo -n "."
+    sleep 2
+  done
+  
+  print_warning "Service might be slow to start. Checking container status..."
+  
+  # Check container status
+  if check_docker_access; then
+    docker-compose ps
+  else
+    sudo docker-compose ps
+  fi
+  
+  print_warning "If the service is not running, check logs with: docker-compose logs"
 }
 
 # Show success message
 show_success() {
-  local api_token=$(grep API_STATIC_TOKEN "$INSTALL_DIR/.env" | cut -d= -f2)
+  local api_token
+  if [ -f "$INSTALL_DIR/.env" ]; then
+    api_token=$(grep API_STATIC_TOKEN "$INSTALL_DIR/.env" | cut -d= -f2)
+  else
+    api_token="[NOT FOUND - check .env file]"
+  fi
   
   echo ""
   echo "🎉 Xray Manager Installation Complete!"
@@ -561,6 +463,10 @@ show_success() {
   echo "   curl -H 'x-api-token: $api_token' http://localhost:$API_PORT/api/xray/config"
   echo ""
   echo "💾 Configuration file: $INSTALL_DIR/.env"
+  echo ""
+  echo "⚠️  Note: If you had Docker permission issues, you may need to:"
+  echo "       1. Log out and back in"
+  echo "       2. Or run: newgrp docker"
   echo ""
 }
 
@@ -588,19 +494,18 @@ main() {
   
   # Step 7: Show success
   show_success
+  
+  echo -e "${GREEN}Installation completed successfully!${NC}"
 }
+
+# Handle script interruption
+cleanup() {
+  print_warning "Installation interrupted"
+  exit 1
+}
+
+trap cleanup INT TERM
 
 # Run installation
 main "$@"
 
-
-
-
-
-
-
-
-
-
-# single line installation: 
-# curl -sSL https://raw.githubusercontent.com/razhanamini/v2chain-vps/main/install.sh | bash -x
