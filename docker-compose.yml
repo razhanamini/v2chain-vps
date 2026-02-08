@@ -16,6 +16,7 @@ services:
       - /etc/xray:/etc/xray:rw
       # Mount host Xray stats
       - /var/lib/xray:/var/lib/xray:rw
+      - /usr/local/etc/xray/config.json:/usr/local/etc/xray/config.json:ro
     # Run with host user permissions
     user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
     network_mode: "host"
