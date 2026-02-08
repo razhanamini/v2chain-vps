@@ -14,8 +14,8 @@ services:
       - XRAY_CONFIG_PATH=/usr/local/etc/xray/config.json  # ← Use this path
     volumes:
       # Mount the ACTUAL config file from host
-      - /usr/local/etc/xray/config.json:/usr/local/etc/xray/config.json:rw
+      - /etc/xray:/etc/xray:rw
+      - /usr/local/etc/xray:/usr/local/etc/xray:rw
       - /var/lib/xray:/var/lib/xray:rw
-      - /usr/local/etc/xray/config.json:/etc/xray/config.json:rw  # Also mount here
     user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
     network_mode: "host"
