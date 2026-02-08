@@ -2,11 +2,10 @@
 FROM node:18-slim
 
 # Set DNS resolver and npm registry
-RUN echo "nameserver 8.8.8.8" > /etc/resolv.conf && \
-    echo "nameserver 1.1.1.1" >> /etc/resolv.conf && \
-    npm config set registry https://registry.npmmirror.com/ && \
-    npm config set strict-ssl false
 
+RUN npm config set registry https://registry.npmmirror.com/ && \
+    npm config set strict-ssl false
+    
 WORKDIR /app
 
 # Copy package files
