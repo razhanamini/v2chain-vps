@@ -15,6 +15,5 @@ services:
     volumes:
       # Mount to app directory instead of system directory
       - /etc/xray/config.json:/app/config/xray-config.json:rw
-      - /var/lib/xray:/var/lib/xray:rw
     network_mode: "host"
     user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
