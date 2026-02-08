@@ -318,7 +318,43 @@ setup_xray_dirs() {
   fi
 }
 
-
+setup_xray_config() {
+  print_status "Setting up Xray configuration files..."
+  
+  # Create directories
+  sudo mkdir -p /etc/xray /usr/local/etc/xray /var/lib/xray
+  
+  # Create config file if it doesn't exist
+  if [ ! -f /etc/xray/config.json ]; then
+    print_status "Creating /etc/xray/config.json..."
+    sudo tee /etc/xray/config.json > /dev/null << 'EOF'
+{
+  "log": {
+    "loglevel": "warning"
+  },
+  "inbounds": [],
+  "outbounds": [
+    {
+      "protocol": "freedom",
+      "settings": {},
+      "tag": "direct"
+    }
+  ]
+}
+EOF
+    print_success "Created /etc/xray/config.json"
+  fi
+  
+  # Copy to /usr/local/etc/xray for backward compatibility
+  sudo cp /etc/xray/config.json /usr/local/etc/xray/config.json 2>/dev/null || true
+  
+  # Set permissions
+  sudo chown -R "$USER:$USER" /etc/xray /usr/local/etc/xray /var/lib/xray 2>/dev/null || true
+  sudo chmod 755 /etc/xray /usr/local/etc/xray /var/lib/xray
+  sudo chmod 644 /etc/xray/config.json /usr/local/etc/xray/config.json
+  
+  print_success "Xray config files setup complete"
+}
 
 # Clone or update repository
 get_code() {
@@ -558,6 +594,8 @@ main() {
   setup_xray_dirs
 
   create_initial_config
+
+  setup_xray_config
   
   # Step 3: Get source code
   get_code
