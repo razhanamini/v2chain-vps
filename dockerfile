@@ -19,6 +19,8 @@ RUN npm ci --only=production --progress=true --loglevel=info || \
 # Copy source code
 COPY . .
 
+RUN npm run build
+
 EXPOSE 5000
 
-CMD ["node", "dist/server.js"]
+CMD ["node", "dist/app.js"]
