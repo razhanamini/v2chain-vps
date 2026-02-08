@@ -6,14 +6,16 @@ services:
     container_name: xray-manager
     restart: unless-stopped
     ports:
-      - "5000:5000"   # Expose API/dashboard
+      - "5000:5000"
     environment:
       - NODE_ENV=production
       - API_STATIC_TOKEN=${API_STATIC_TOKEN}
-      - XRAY_CONFIG_PATH=/etc/xray/config.json   # ← Path on host
+      # Point to where the file will be in container
+      - XRAY_CONFIG_PATH=/usr/local/etc/xray/config.json
     volumes:
-      # Only mount if your manager needs read/write access to config
-      - /etc/xray:/etc/xray:ro    # read-only access to config
-      - /var/lib/xray:/var/lib/xray:rw   # optional, for stats or dynamic files
-    network_mode: "host"  # allows the manager to access host Xray ports directly
+      # Mount the host config file to container (read-write)
+      - /usr/local/etc/xray/config.json:/usr/local/etc/xray/config.json:rw
+      # Optional: Mount stats directory if needed
+      - /var/lib/xray:/var/lib/xray:rw
+    network_mode: "host"
     user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
