@@ -10,14 +10,11 @@ services:
       - "5000:5000"
     environment:
       - NODE_ENV=production
-      - API_STATIC_TOKEN=${API_STATIC_TOKEN:-changeme123}
-      - XRAY_CONFIG_PATH=/etc/xray/config.json  # ← ADD THIS
+      - API_STATIC_TOKEN=${API_STATIC_TOKEN}
+      - XRAY_CONFIG_PATH=/usr/local/etc/xray/config.json  # ← Use this path
     volumes:
-      # Mount host Xray config - BOTH locations for compatibility
-      - /etc/xray:/etc/xray:rw
+      # Mount the ACTUAL config file from host
+      - /usr/local/etc/xray/config.json:/usr/local/etc/xray/config.json:rw
       - /var/lib/xray:/var/lib/xray:rw
-      # Also mount to /usr/local/etc/xray for backward compatibility
-      - /etc/xray:/usr/local/etc/xray:rw  # ← ADD THIS
-    # Run with host user permissions
     user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
     network_mode: "host"
