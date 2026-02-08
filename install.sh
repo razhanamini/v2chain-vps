@@ -392,6 +392,34 @@ build_image() {
   fi
 }
 
+configure_docker_dns() {
+  print_status "Configuring Docker DNS..."
+
+  sudo mkdir -p /etc/docker
+
+  sudo tee /etc/docker/daemon.json > /dev/null << 'EOF'
+{
+  "dns": ["8.8.8.8", "1.1.1.1"]
+}
+EOF
+
+  # Try to restart Docker in multiple environments
+  if command -v systemctl > /dev/null 2>&1; then
+    sudo systemctl restart docker 2>/dev/null || true
+  fi
+
+  if command -v service > /dev/null 2>&1; then
+    sudo service docker restart 2>/dev/null || true
+  fi
+
+  if command -v snap > /dev/null 2>&1 && snap list docker >/dev/null 2>&1; then
+    sudo snap restart docker 2>/dev/null || true
+  fi
+
+  print_success "Docker DNS configured"
+}
+
+
 # Create environment file
 create_env() {
   print_status "Creating configuration..."
@@ -492,6 +520,9 @@ main() {
   
   # Step 1: Check dependencies
   check_deps
+
+  # check docker dns
+  configure_docker_dns
   
   # Step 2: Setup Xray directories
   setup_xray_dirs
