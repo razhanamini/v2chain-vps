@@ -10,7 +10,7 @@ services:
       - "5000:5000"
     environment:
       - NODE_ENV=production
-      - API_STATIC_TOKEN=BviUVBkhZH2YdydyGiREet3f8vfWyEpGi5i2ozwOsGPVlXD6KKvxkXkXZ063mQV8
+      - API_STATIC_TOKEN=${API_STATIC_TOKEN:-changeme123}
     volumes:
       # Mount host Xray config
       - /etc/xray:/etc/xray:rw

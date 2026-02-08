@@ -235,14 +235,123 @@ EOF
   "log": {
     "loglevel": "warning"
   },
-  "inbounds": [],
+  "api": {
+    "tag": "api",
+    "services": [
+      "HandlerService",
+      "LoggerService",
+      "StatsService"
+    ]
+  },
+  "stats": {
+    "enabled": true,
+    "statsFile": "/var/lib/xray/stats.json"
+  },
+  "policy": {
+    "levels": {
+      "0": {
+        "handshake": 12,
+        "connIdle": 900,
+        "downlinkOnly": 20,
+        "uplinkOnly": 8,
+        "bufferSize": 20480,
+        "statsUserUplink": true,
+        "statsUserDownlink": true
+      }
+    },
+    "system": {
+      "statsInboundUplink": true,
+      "statsInboundDownlink": true,
+      "statsOutboundUplink": true,
+      "statsOutboundDownlink": true
+    }
+  },
+  "inbounds": [
+    {
+      "port": 8445,
+      "protocol": "vless",
+      "settings": {
+        "clients": [
+          {
+            "id": "7e64f9bf-d733-4dd0-a642-3a05d1cc3f0e",
+            "email": "user1@gmail.com",
+            "flow": "",
+            "limitIp": 0,
+            "totalGB": 100,
+            "expireTime": 1772286796225,
+            "createdAt": "2026-02-08T13:53:16.225Z"
+          }
+        ],
+        "decryption": "none"
+      },
+      "streamSettings": {
+        "network": "tcp",
+        "security": "reality",
+        "realitySettings": {
+          "dest": "play.google.com:443",
+          "serverNames": [
+            "play.google.com"
+          ],
+          "privateKey": "KJYm4jdWfD4VNZ5D98qVQ0WwM8BHge8sBpeuEo9ePX0",
+          "shortIds": [
+            "6ba85179e30d4fc2"
+          ],
+          "fingerprint": "chrome",
+          "spiderX": ""
+        },
+        "tcpSettings": {
+          "header": {
+            "type": "none"
+          },
+          "acceptProxyProtocol": false
+        }
+      },
+      "sniffing": {
+        "enabled": true,
+        "destOverride": [
+          "http",
+          "tls",
+          "quic"
+        ]
+      },
+      "tag": "vless-reality-inbound"
+    },
+    {
+      "listen": "127.0.0.1",
+      "port": 10085,
+      "protocol": "dokodemo-door",
+      "settings": {
+        "address": "127.0.0.1",
+        "port": 62789,
+        "network": "tcp"
+      },
+      "tag": "api-inbound"
+    }
+  ],
   "outbounds": [
     {
       "protocol": "freedom",
       "settings": {},
       "tag": "direct"
+    },
+    {
+      "protocol": "blackhole",
+      "settings": {},
+      "tag": "block"
     }
-  ]
+  ],
+  "routing": {
+    "domainStrategy": "AsIs",
+    "rules": [
+      {
+        "inboundTag": [
+          "api-inbound"
+        ],
+        "outboundTag": "api",
+        "type": "field"
+      }
+    ]
+  }
 }
 EOF
   fi
@@ -444,3 +553,15 @@ main() {
 
 # Run installation
 main "$@"
+
+
+
+
+
+
+
+
+
+
+# single line installation: 
+# bash <(curl -sSL https://raw.githubusercontent.com/yourusername/xray-manager/main/scripts/install-xray-version.sh)
