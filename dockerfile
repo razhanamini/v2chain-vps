@@ -7,8 +7,7 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install dependencies (curl is already in node:slim)
-RUN npm ci --only=production
-
+RUN npm ci --only=production --progress=true --loglevel=info
 # Copy source code
 COPY . .
 
