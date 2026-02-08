@@ -11,9 +11,8 @@ services:
       - NODE_ENV=production
       - API_STATIC_TOKEN=${API_STATIC_TOKEN}
       # Update your app to use this path instead
-      - XRAY_CONFIG_PATH=/app/config/xray-config.json
+      - XRAY_CONFIG_PATH=/app/config/config.json
     volumes:
       # Mount to app directory instead of system directory
-      - /etc/xray/config.json:/app/config/xray-config.json:rw
+      - /etc/xray/config.json:/app/config/config.json:rw
     network_mode: "host"
-    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
