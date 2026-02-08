@@ -19,7 +19,7 @@ if [ "$EUID" -eq 0 ]; then
 fi
 
 # Configuration
-REPO_URL="https://github.com/yourusername/xray-manager.git"
+REPO_URL="https://github.com/razhanamini/v2chain-vps.git"
 INSTALL_DIR="$HOME/xray-manager"
 API_PORT="5000"
 
@@ -165,11 +165,158 @@ setup_xray_dirs() {
 }
 
 # Install Xray
+#!/bin/bash
+# install.sh - Updated Xray installation with specific version
+
+# ... [previous code remains the same] ...
+
+# Install Xray with specific version (26.2.4)
 install_xray() {
-  echo "📦 Installing Xray..."
-  bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install
+  echo "📦 Installing Xray version 26.2.4..."
+  
+  # Create temporary directory
+  TEMP_DIR=$(mktemp -d)
+  cd "$TEMP_DIR"
+  
+  # Download the specific version
+  echo "Downloading Xray 26.2.4..."
+  if ! curl -L -o Xray-linux-64.zip "https://github.com/XTLS/Xray-core/releases/download/v26.2.4/Xray-linux-64.zip"; then
+    echo -e "${RED}❌ Failed to download Xray${NC}"
+    return 1
+  fi
+  
+  # Extract
+  echo "Extracting..."
+  unzip -q Xray-linux-64.zip
+  if [ $? -ne 0 ]; then
+    echo -e "${RED}❌ Failed to extract Xray${NC}"
+    return 1
+  fi
+  
+  # Install
+  echo "Installing..."
+  sudo systemctl stop xray 2>/dev/null || true
+  sudo cp xray /usr/local/bin/
+  sudo chmod +x /usr/local/bin/xray
+  
+  # Create systemd service if it doesn't exist
+  if [ ! -f /etc/systemd/system/xray.service ]; then
+    echo "Creating systemd service..."
+    sudo tee /etc/systemd/system/xray.service > /dev/null << 'EOF'
+[Unit]
+Description=Xray Service
+Documentation=https://github.com/xtls
+After=network.target nss-lookup.target
+
+[Service]
+User=root
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_BIND_SERVICE CAP_SYS_PTRACE
+AmbientCapabilities=CAP_NET_ADMIN CAP_NET_BIND_SERVICE CAP_SYS_PTRACE
+NoNewPrivileges=true
+ExecStart=/usr/local/bin/xray run -config /etc/xray/config.json
+Restart=on-failure
+RestartPreventExitStatus=23
+LimitNPROC=10000
+LimitNOFILE=1000000
+
+[Install]
+WantedBy=multi-user.target
+EOF
+  fi
+  
+  # Create config directory
+  sudo mkdir -p /etc/xray
+  
+  # Create default config if it doesn't exist
+  if [ ! -f /etc/xray/config.json ]; then
+    echo "Creating default config..."
+    sudo tee /etc/xray/config.json > /dev/null << 'EOF'
+{
+  "log": {
+    "loglevel": "warning"
+  },
+  "inbounds": [],
+  "outbounds": [
+    {
+      "protocol": "freedom",
+      "settings": {},
+      "tag": "direct"
+    }
+  ]
+}
+EOF
+  fi
+  
+  # Enable and start service
+  sudo systemctl daemon-reload
   sudo systemctl enable xray
-  echo -e "${GREEN}✅ Xray installed${NC}"
+  sudo systemctl start xray
+  
+  # Verify installation
+  if /usr/local/bin/xray version | grep -q "26.2.4"; then
+    echo -e "${GREEN}✅ Xray 26.2.4 installed successfully${NC}"
+  else
+    echo -e "${YELLOW}⚠️  Xray installed but version check failed${NC}"
+  fi
+  
+  # Cleanup
+  cd /
+  rm -rf "$TEMP_DIR"
+}
+
+# Alternative method using the official installer with version
+install_xray_alternative() {
+  echo "📦 Installing Xray 26.2.4 (alternative method)..."
+  
+  # Download the official installer
+  curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh -o /tmp/install-release.sh
+  
+  # Make it executable
+  chmod +x /tmp/install-release.sh
+  
+  # Install specific version
+  sudo bash /tmp/install-release.sh -v v26.2.4
+  
+  if [ $? -eq 0 ]; then
+    echo -e "${GREEN}✅ Xray 26.2.4 installed${NC}"
+  else
+    echo -e "${RED}❌ Failed to install Xray${NC}"
+  fi
+  
+  # Cleanup
+  rm /tmp/install-release.sh
+}
+
+# Updated check for Xray with version verification
+setup_xray_dirs() {
+  echo "📁 Setting up Xray directories..."
+  
+  # Create directories if they don't exist
+  sudo mkdir -p /etc/xray /var/lib/xray
+  
+  # Check if Xray is already installed and is version 26.2.4
+  if command -v xray &> /dev/null; then
+    CURRENT_VERSION=$(xray version | grep -oP 'Xray \K[0-9.]+' | head -1)
+    if [ "$CURRENT_VERSION" = "26.2.4" ]; then
+      echo -e "${GREEN}✅ Xray 26.2.4 is already installed${NC}"
+    else
+      echo -e "${YELLOW}⚠️  Found Xray version $CURRENT_VERSION, need version 26.2.4${NC}"
+      read -p "Upgrade to version 26.2.4? (y/n): " -n 1 -r
+      echo
+      if [[ $REPLY =~ ^[Yy]$ ]]; then
+        install_xray
+      fi
+    fi
+  else
+    echo -e "${YELLOW}⚠️  Xray not found. Installing version 26.2.4...${NC}"
+    install_xray
+  fi
+  
+  # Set permissions
+  sudo chown -R $USER:$USER /etc/xray /var/lib/xray 2>/dev/null || true
+  sudo chmod 755 /etc/xray /var/lib/xray
+  
+  echo -e "${GREEN}✅ Directories configured${NC}"
 }
 
 # Clone or update repository
