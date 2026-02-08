@@ -216,34 +216,36 @@ check_deps() {
   print_success "All dependencies satisfied"
 }
 
-# Install Xray with specific version
 install_xray() {
- # -----------------------------
-# Install Xray on the host
-# -----------------------------
-install_xray_host() {
-  XRAY_VERSION="26.2.4"
-  print_status "Installing Xray $XRAY_VERSION on host..."
+  print_status "Installing Xray $XRAY_VERSION..."
 
-  # Create directories for config and data
+  # Ensure unzip exists
+  if ! command -v unzip &> /dev/null; then
+    print_status "Installing unzip..."
+    sudo apt-get install -y unzip 2>/dev/null || sudo yum install -y unzip 2>/dev/null
+  fi
+
+  # Create directories
   sudo mkdir -p /etc/xray /var/lib/xray
   sudo chown -R "$USER:$USER" /etc/xray /var/lib/xray
   sudo chmod 755 /etc/xray /var/lib/xray
 
-  # Download and install Xray binary
+  # Download Xray
   TEMP_DIR=$(mktemp -d)
-  cd "$TEMP_DIR"
+  cd "$TEMP_DIR" || exit 1
   print_status "Downloading Xray $XRAY_VERSION..."
-  curl -L -o Xray-linux-64.zip "https://github.com/XTLS/Xray-core/releases/download/v${XRAY_VERSION}/Xray-linux-64.zip"
+  curl -L -o Xray-linux-64.zip "https://github.com/XTLS/Xray-core/releases/download/v${XRAY_VERSION}/Xray-linux-64.zip" || { print_error "Download failed"; exit 1; }
 
+  # Extract
   print_status "Extracting..."
-  unzip -q Xray-linux-64.zip
+  unzip -q Xray-linux-64.zip || { print_error "Extraction failed"; exit 1; }
 
+  # Install binary
   print_status "Installing binary to /usr/local/bin..."
-  sudo mv xray /usr/local/bin/
+  sudo cp xray /usr/local/bin/
   sudo chmod +x /usr/local/bin/xray
 
-  # Create a default config if it doesn't exist
+  # Create default config if missing
   if [ ! -f /etc/xray/config.json ]; then
     print_status "Creating default /etc/xray/config.json..."
     cat > /etc/xray/config.json << 'EOF'
@@ -257,10 +259,10 @@ install_xray_host() {
 EOF
   fi
 
-  # Create systemd service
+  # Create systemd service if missing
   if [ ! -f /etc/systemd/system/xray.service ]; then
     print_status "Creating systemd service for Xray..."
-    sudo tee /etc/systemd/system/xray.service > /dev/null << 'EOF'
+    sudo tee /etc/systemd/system/xray.service > /dev/null << EOF
 [Unit]
 Description=Xray Service
 Documentation=https://github.com/xtls
@@ -282,15 +284,15 @@ WantedBy=multi-user.target
 EOF
   fi
 
-  # Enable and start Xray service
-  print_status "Reloading systemd and starting Xray..."
+  # Enable and start
+  print_status "Starting Xray service..."
   sudo systemctl daemon-reload
   sudo systemctl enable xray
-  sudo systemctl start xray
+  sudo systemctl restart xray
 
-  # Verify installation
+  # Verify
   if xray version | grep -q "$XRAY_VERSION"; then
-    print_success "Xray $XRAY_VERSION installed successfully on host"
+    print_success "Xray $XRAY_VERSION installed successfully"
   else
     print_warning "Xray installed but version check failed"
   fi
@@ -300,34 +302,22 @@ EOF
   rm -rf "$TEMP_DIR"
 }
 
-}
-
-# Setup Xray directories and permissions
 setup_xray_dirs() {
-  print_status "Setting up Xray directories..."
-
-  # Create necessary directories
-  sudo mkdir -p /etc/xray /var/lib/xray /usr/local/etc/xray
-
-  # Check if Xray is installed
+  print_status "Checking Xray installation..."
   if command -v xray &> /dev/null; then
-    CURRENT_VERSION=$(xray version 2>/dev/null | grep -oP 'Xray \K[0-9.]+' | head -1 || echo "unknown")
-    if [ "$CURRENT_VERSION" = "$XRAY_VERSION" ]; then
-      print_success "Xray $XRAY_VERSION is already installed"
-    else
-      print_warning "Found Xray version $CURRENT_VERSION, upgrading to $XRAY_VERSION"
+    CURRENT_VERSION=$(xray version 2>/dev/null | grep -oP 'Xray \K[0-9.]+' || echo "unknown")
+    if [ "$CURRENT_VERSION" != "$XRAY_VERSION" ]; then
+      print_warning "Xray version $CURRENT_VERSION found, upgrading to $XRAY_VERSION"
       install_xray
+    else
+      print_success "Xray $XRAY_VERSION already installed"
     fi
   else
-    print_warning "Xray not found. Installing Xray $XRAY_VERSION..."
+    print_warning "Xray not found. Installing..."
     install_xray
   fi
-
-  # Set permissions for directories
-  sudo chown -R "$USER:$USER" /etc/xray /var/lib/xray /usr/local/etc/xray 2>/dev/null || true
-  sudo chmod 755 /etc/xray /var/lib/xray /usr/local/etc/xray
-  print_success "Xray directories and permissions set"
 }
+
 
 
 # Clone or update repository
