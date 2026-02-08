@@ -305,44 +305,30 @@ EOF
 # Setup Xray directories and permissions
 setup_xray_dirs() {
   print_status "Setting up Xray directories..."
-  
-  # Create directories if they don't exist
-  sudo mkdir -p /etc/xray /var/lib/xray
-  
-  # Check if Xray is already installed
+
+  # Create necessary directories
+  sudo mkdir -p /etc/xray /var/lib/xray /usr/local/etc/xray
+
+  # Check if Xray is installed
   if command -v xray &> /dev/null; then
     CURRENT_VERSION=$(xray version 2>/dev/null | grep -oP 'Xray \K[0-9.]+' | head -1 || echo "unknown")
     if [ "$CURRENT_VERSION" = "$XRAY_VERSION" ]; then
       print_success "Xray $XRAY_VERSION is already installed"
     else
-      print_warning "Found Xray version $CURRENT_VERSION, need version $XRAY_VERSION"
-      read -p "Install/upgrade to version $XRAY_VERSION? (y/n): " -n 1 -r
-      echo
-      if [[ $REPLY =~ ^[Yy]$ ]]; then
-        install_xray
-      fi
-    fi
-  else
-    print_warning "Xray not found."
-    read -p "Install Xray $XRAY_VERSION now? (y/n): " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
+      print_warning "Found Xray version $CURRENT_VERSION, upgrading to $XRAY_VERSION"
       install_xray
-    else
-      print_warning "Xray is required for this application to work properly."
     fi
-  fi
-  
-  # Set permissions (try without sudo first)
-  print_status "Setting directory permissions..."
-  if sudo chown -R "$USER:$USER" /etc/xray /var/lib/xray 2>/dev/null; then
-    print_success "Directory permissions set"
   else
-    print_warning "Could not change ownership, continuing with current permissions"
+    print_warning "Xray not found. Installing Xray $XRAY_VERSION..."
+    install_xray
   fi
-  
-  sudo chmod 755 /etc/xray /var/lib/xray
+
+  # Set permissions for directories
+  sudo chown -R "$USER:$USER" /etc/xray /var/lib/xray /usr/local/etc/xray 2>/dev/null || true
+  sudo chmod 755 /etc/xray /var/lib/xray /usr/local/etc/xray
+  print_success "Xray directories and permissions set"
 }
+
 
 # Clone or update repository
 get_code() {
