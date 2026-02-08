@@ -20,7 +20,7 @@ NC='\033[0m' # No Color
 
 # Configuration
 REPO_URL="https://github.com/razhanamini/v2chain-vps.git"
-INSTALL_DIR="$HOME/xray-manager"
+INSTALL_DIR="$HOME/v2chain-vps"
 API_PORT="5000"
 
 # Generate a random API token
