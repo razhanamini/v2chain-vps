@@ -11,12 +11,13 @@ services:
     environment:
       - NODE_ENV=production
       - API_STATIC_TOKEN=${API_STATIC_TOKEN:-changeme123}
+      - XRAY_CONFIG_PATH=/etc/xray/config.json  # ← ADD THIS
     volumes:
-      # Mount host Xray config
+      # Mount host Xray config - BOTH locations for compatibility
       - /etc/xray:/etc/xray:rw
-      # Mount host Xray stats
       - /var/lib/xray:/var/lib/xray:rw
-      - /usr/local/etc/xray/config.json:/usr/local/etc/xray/config.json:ro
+      # Also mount to /usr/local/etc/xray for backward compatibility
+      - /etc/xray:/usr/local/etc/xray:rw  # ← ADD THIS
     # Run with host user permissions
     user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
     network_mode: "host"
