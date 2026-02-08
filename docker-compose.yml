@@ -1,0 +1,21 @@
+# docker-compose.yml
+version: '3.8'
+
+services:
+  xray-manager:
+    build: .
+    container_name: xray-manager
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    environment:
+      - NODE_ENV=production
+      - API_STATIC_TOKEN=BviUVBkhZH2YdydyGiREet3f8vfWyEpGi5i2ozwOsGPVlXD6KKvxkXkXZ063mQV8
+    volumes:
+      # Mount host Xray config
+      - /etc/xray:/etc/xray:rw
+      # Mount host Xray stats
+      - /var/lib/xray:/var/lib/xray:rw
+    # Run with host user permissions
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    network_mode: "host"
