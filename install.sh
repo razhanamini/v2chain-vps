@@ -13,10 +13,10 @@ YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 # Check if running as root
-if [ "$EUID" -eq 0 ]; then 
-  echo -e "${RED}⚠️  Please run as non-root user, not with sudo${NC}"
-  exit 1
-fi
+#if [ "$EUID" -eq 0 ]; then 
+ # echo -e "${RED}⚠️  Please run as non-root user, not with sudo${NC}"
+  #exit 1
+#fi
 
 # Configuration
 REPO_URL="https://github.com/razhanamini/v2chain-vps.git"
@@ -564,4 +564,4 @@ main "$@"
 
 
 # single line installation: 
-# bash <(curl -sSL https://raw.githubusercontent.com/yourusername/xray-manager/main/scripts/install-xray-version.sh)
+# curl -sSL https://raw.githubusercontent.com/razhanamini/v2chain-vps/main/install.sh | bash -x
