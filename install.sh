@@ -441,6 +441,40 @@ EOF
 }
 
 
+create_xray_config() {
+  print_status "Ensuring Xray config exists..."
+  
+  # Create directories
+  sudo mkdir -p /etc/xray /usr/local/etc/xray /var/lib/xray
+  
+  # Create default config if missing
+  if [ ! -f /etc/xray/config.json ]; then
+    print_status "Creating default /etc/xray/config.json..."
+    sudo tee /etc/xray/config.json > /dev/null << 'EOF'
+{
+  "log": { "loglevel": "warning" },
+  "inbounds": [],
+  "outbounds": [
+    { "protocol": "freedom", "settings": {}, "tag": "direct" }
+  ]
+}
+EOF
+  else
+    print_status "Xray config already exists"
+  fi
+
+  # Symlink for Docker if needed
+  sudo ln -sf /etc/xray/config.json /usr/local/etc/xray/config.json 2>/dev/null || true
+
+  # Set permissions
+  sudo chown -R "$USER:$USER" /etc/xray /usr/local/etc/xray /var/lib/xray
+  sudo chmod 755 /etc/xray /usr/local/etc/xray /var/lib/xray
+
+  print_success "Xray config ready"
+}
+
+
+
 # Create environment file
 create_env() {
   print_status "Creating configuration..."
@@ -592,6 +626,8 @@ main() {
   
   # Step 2: Setup Xray directories
   setup_xray_dirs
+
+  create_xray_config
 
   create_initial_config
 
