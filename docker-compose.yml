@@ -1,4 +1,3 @@
-# docker-compose.yml
 version: '3.8'
 
 services:
@@ -7,15 +6,14 @@ services:
     container_name: xray-manager
     restart: unless-stopped
     ports:
-      - "5000:5000"
+      - "5000:5000"   # Expose API/dashboard
     environment:
       - NODE_ENV=production
       - API_STATIC_TOKEN=${API_STATIC_TOKEN}
-      - XRAY_CONFIG_PATH=/usr/local/etc/xray/config.json  # ← Use this path
+      - XRAY_CONFIG_PATH=/etc/xray/config.json   # ← Path on host
     volumes:
-      # Mount the ACTUAL config file from host
-      - /etc/xray:/etc/xray:rw
-      - /usr/local/etc/xray:/usr/local/etc/xray:rw
-      - /var/lib/xray:/var/lib/xray:rw
-    # user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
-    network_mode: "host"
+      # Only mount if your manager needs read/write access to config
+      - /etc/xray:/etc/xray:ro    # read-only access to config
+      - /var/lib/xray:/var/lib/xray:rw   # optional, for stats or dynamic files
+    network_mode: "host"  # allows the manager to access host Xray ports directly
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"

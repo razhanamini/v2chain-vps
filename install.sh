@@ -218,38 +218,48 @@ check_deps() {
 
 # Install Xray with specific version
 install_xray() {
-  print_status "Installing Xray version $XRAY_VERSION..."
-  
-  # Create temporary directory
+ # -----------------------------
+# Install Xray on the host
+# -----------------------------
+install_xray_host() {
+  XRAY_VERSION="26.2.4"
+  print_status "Installing Xray $XRAY_VERSION on host..."
+
+  # Create directories for config and data
+  sudo mkdir -p /etc/xray /var/lib/xray
+  sudo chown -R "$USER:$USER" /etc/xray /var/lib/xray
+  sudo chmod 755 /etc/xray /var/lib/xray
+
+  # Download and install Xray binary
   TEMP_DIR=$(mktemp -d)
   cd "$TEMP_DIR"
-  
-  # Download the specific version
   print_status "Downloading Xray $XRAY_VERSION..."
-  if ! curl -L -o Xray-linux-64.zip "https://github.com/XTLS/Xray-core/releases/download/v${XRAY_VERSION}/Xray-linux-64.zip"; then
-    print_error "Failed to download Xray"
-    return 1
-  fi
-  
-  # Extract
+  curl -L -o Xray-linux-64.zip "https://github.com/XTLS/Xray-core/releases/download/v${XRAY_VERSION}/Xray-linux-64.zip"
+
   print_status "Extracting..."
-  if ! unzip -q Xray-linux-64.zip; then
-    print_error "Failed to extract Xray"
-    return 1
-  fi
-  
-  # Stop existing Xray service
-  print_status "Stopping existing Xray service..."
-  sudo systemctl stop xray 2>/dev/null || true
-  
-  # Install
-  print_status "Installing Xray binary..."
-  sudo cp xray /usr/local/bin/
+  unzip -q Xray-linux-64.zip
+
+  print_status "Installing binary to /usr/local/bin..."
+  sudo mv xray /usr/local/bin/
   sudo chmod +x /usr/local/bin/xray
-  
-  # Create systemd service if it doesn't exist
+
+  # Create a default config if it doesn't exist
+  if [ ! -f /etc/xray/config.json ]; then
+    print_status "Creating default /etc/xray/config.json..."
+    cat > /etc/xray/config.json << 'EOF'
+{
+  "log": { "loglevel": "warning" },
+  "inbounds": [],
+  "outbounds": [
+    { "protocol": "freedom", "settings": {}, "tag": "direct" }
+  ]
+}
+EOF
+  fi
+
+  # Create systemd service
   if [ ! -f /etc/systemd/system/xray.service ]; then
-    print_status "Creating systemd service..."
+    print_status "Creating systemd service for Xray..."
     sudo tee /etc/systemd/system/xray.service > /dev/null << 'EOF'
 [Unit]
 Description=Xray Service
@@ -271,26 +281,25 @@ LimitNOFILE=1000000
 WantedBy=multi-user.target
 EOF
   fi
-  
-  # Create config directory
-  sudo mkdir -p /etc/xray
-  
-  # Enable and start service
-  print_status "Starting Xray service..."
+
+  # Enable and start Xray service
+  print_status "Reloading systemd and starting Xray..."
   sudo systemctl daemon-reload
   sudo systemctl enable xray
   sudo systemctl start xray
-  
+
   # Verify installation
-  if /usr/local/bin/xray version | grep -q "$XRAY_VERSION"; then
-    print_success "Xray $XRAY_VERSION installed successfully"
+  if xray version | grep -q "$XRAY_VERSION"; then
+    print_success "Xray $XRAY_VERSION installed successfully on host"
   else
     print_warning "Xray installed but version check failed"
   fi
-  
+
   # Cleanup
   cd /
   rm -rf "$TEMP_DIR"
+}
+
 }
 
 # Setup Xray directories and permissions

@@ -79,5 +79,5 @@ class XrayService {
     }
 }
 exports.XrayService = XrayService;
-XrayService.XRAY_CONFIG_PATH = '/usr/local/etc/xray/config.json';
+XrayService.XRAY_CONFIG_PATH = process.env.XRAY_CONFIG_PATH;
 //# sourceMappingURL=xray.service.js.map
