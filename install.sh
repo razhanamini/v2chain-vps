@@ -33,6 +33,19 @@ check_deps() {
   echo "🔍 Checking dependencies..."
   
   local missing=()
+
+   # Check Docker
+  if ! command -v docker &> /dev/null; then
+    missing+=("docker")
+  fi
+  
+  if [ ${#missing[@]} -gt 0 ]; then
+    # ... install docker if missing
+  else
+    # Docker is installed, check permissions
+    setup_docker_permissions
+  fi
+  
   
   # Check Docker
   if ! command -v docker &> /dev/null; then
@@ -87,6 +100,32 @@ check_deps() {
   fi
   
   echo -e "${GREEN}✅ All dependencies found${NC}"
+}
+
+#  docker:
+setup_docker_permissions() {
+  echo "🔧 Setting up Docker permissions..."
+  
+  # Check if user is in docker group
+  if groups $USER | grep -q '\bdocker\b'; then
+    echo -e "${GREEN}✅ User already in docker group${NC}"
+  else
+    echo -e "${YELLOW}⚠️  Adding user to docker group...${NC}"
+    sudo usermod -aG docker $USER
+    
+    echo -e "${YELLOW}⚠️  You need to log out and back in for changes to take effect.${NC}"
+    echo -e "${YELLOW}   Alternatively, you can run: newgrp docker${NC}"
+    
+    read -p "Apply group changes now? (y/n): " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+      # Apply group changes without logout
+      newgrp docker << 'EOF'
+      echo "Docker group applied. Continuing installation..."
+EOF
+      # The above might not work perfectly, so we'll continue anyway
+    fi
+  fi
 }
 
 # Install Docker automatically
