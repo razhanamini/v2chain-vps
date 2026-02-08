@@ -6,6 +6,7 @@ FROM node:18-slim
 RUN npm config set registry https://registry.npmmirror.com/ && \
     npm config set strict-ssl false
     
+
 WORKDIR /app
 
 # Copy package files

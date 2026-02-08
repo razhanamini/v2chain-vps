@@ -19,6 +19,22 @@ INSTALL_DIR="$HOME/v2chain-vps"
 API_PORT="5000"
 XRAY_VERSION="26.2.4"
 
+fix_docker_paths() {
+  print_status "Fixing Docker volume paths..."
+
+  local DATA_DIR="$INSTALL_DIR/xray-data"
+  mkdir -p "$DATA_DIR"
+
+  # Replace /var/lib/xray with local writable directory
+  if grep -q "/var/lib/xray" "$INSTALL_DIR/docker-compose.yml"; then
+    sed -i "s|/var/lib/xray|$DATA_DIR|g" "$INSTALL_DIR/docker-compose.yml"
+    print_success "Docker volumes patched to use $DATA_DIR"
+  else
+    print_success "No restricted paths detected"
+  fi
+}
+
+
 # Generate a random API token
 generate_token() {
   if command -v openssl > /dev/null 2>&1; then
@@ -482,6 +498,9 @@ main() {
   
   # Step 3: Get source code
   get_code
+
+  # fix docker volumes
+  fix_docker_paths
   
   # Step 4: Create environment
   create_env
