@@ -514,6 +514,51 @@ show_success() {
   echo ""
 }
 
+
+create_initial_config() {
+  print_status "Creating initial Xray configuration..."
+  
+  # Create directories
+  sudo mkdir -p /etc/xray /usr/local/etc/xray /var/lib/xray
+  
+  # Create config if it doesn't exist
+  if [ ! -f /etc/xray/config.json ]; then
+    print_status "Creating /etc/xray/config.json..."
+    
+    # Create config (simplified version)
+    sudo tee /etc/xray/config.json > /dev/null << 'EOF'
+{
+  "log": {
+    "loglevel": "warning"
+  },
+  "inbounds": [],
+  "outbounds": [
+    {
+      "protocol": "freedom",
+      "settings": {},
+      "tag": "direct"
+    }
+  ]
+}
+EOF
+    
+    print_success "Created basic Xray config"
+  else
+    print_success "Xray config already exists"
+  fi
+  
+  # Create symlink
+  sudo ln -sf /etc/xray/config.json /usr/local/etc/xray/config.json 2>/dev/null || true
+  
+  # Set permissions
+  sudo chown -R "$USER:$USER" /etc/xray /usr/local/etc/xray /var/lib/xray 2>/dev/null || true
+  sudo chmod 755 /etc/xray /usr/local/etc/xray /var/lib/xray
+  
+  print_success "Xray directories and config setup complete"
+}
+
+
+
 # Main installation flow
 main() {
   echo -e "${GREEN}Starting Xray Manager installation...${NC}"
@@ -526,6 +571,8 @@ main() {
   
   # Step 2: Setup Xray directories
   setup_xray_dirs
+
+  create_initial_config
   
   # Step 3: Get source code
   get_code
