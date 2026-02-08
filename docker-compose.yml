@@ -17,5 +17,5 @@ services:
       - /etc/xray:/etc/xray:rw
       - /usr/local/etc/xray:/usr/local/etc/xray:rw
       - /var/lib/xray:/var/lib/xray:rw
-    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    # user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
     network_mode: "host"
