@@ -10,12 +10,11 @@ services:
     environment:
       - NODE_ENV=production
       - API_STATIC_TOKEN=${API_STATIC_TOKEN}
-      # Point to where the file will be in container
-      - XRAY_CONFIG_PATH=/usr/local/etc/xray/config.json
+      # Update your app to use this path instead
+      - XRAY_CONFIG_PATH=/app/config/xray-config.json
     volumes:
-      # Mount the host config file to container (read-write)
-      - /usr/local/etc/xray/config.json:/usr/local/etc/xray/config.json:rw
-      # Optional: Mount stats directory if needed
+      # Mount to app directory instead of system directory
+      - /usr/local/etc/xray/config.json:/app/config/xray-config.json:rw
       - /var/lib/xray:/var/lib/xray:rw
     network_mode: "host"
     user: "${HOST_UID:-1000}:${HOST_GID:-1000}"

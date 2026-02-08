@@ -4,6 +4,7 @@ import routes from './routes';
 
 const app = express();
 const PORT = 5000;
+  const XRAY_CONFIG_PATH = process.env.XRAY_CONFIG_PATH!;
 
 // Middleware
 app.use(cors());
@@ -22,7 +23,7 @@ const startServer = async () => {
     console.log(`🚀 Xray Dashboard Backend running on http://localhost:${PORT}`);
     console.log(`📊 Health check: http://localhost:${PORT}/health`);
     console.log(`📋 Detailed health: http://localhost:${PORT}/health/detailed`);
-    console.log(`📁 Config path: /usr/local/etc/xray/config.json`);
+    console.log(`📁 Config path: ${XRAY_CONFIG_PATH}`);
     
     
   });
