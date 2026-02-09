@@ -5,7 +5,7 @@ import { CommandResult } from '../types';
 export class SudoUtils {
   static async executeSudoCommand(command: string, timeout: number = 10000): Promise<CommandResult> {
     return new Promise((resolve, reject) => {
-      const sudoCommand = `sudo ${command}`;
+      const sudoCommand = `${command}`;
       console.log(`Executing: ${sudoCommand}`);
       
       const child = exec(sudoCommand, { timeout });

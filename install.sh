@@ -472,6 +472,7 @@ WorkingDirectory=$INSTALL_DIR
 ExecStart=/usr/bin/node dist/app.js
 Restart=always
 RestartSec=5
+NoNewPrivileges=false
 
 Environment=NODE_ENV=production
 Environment=PORT=$API_PORT
