@@ -5,17 +5,12 @@ services:
     build: .
     container_name: xray-manager
     restart: unless-stopped
-    ports:
-      - "5000:5000"
     environment:
       - NODE_ENV=production
       - API_STATIC_TOKEN=${API_STATIC_TOKEN}
-      # Update your app to use this path instead
       - XRAY_CONFIG_PATH=/app/config/config.json
     volumes:
-      # Mount to app directory instead of system directory
-      - ~/xray/configs/config.json:/app/config/config.json:rw
+      - /root/xray/configs:/app/config:rw
     network_mode: "host"
-
 
 
