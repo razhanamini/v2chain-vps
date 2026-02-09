@@ -15,25 +15,9 @@ NC='\033[0m' # No Color
 
 # Configuration
 REPO_URL="https://github.com/razhanamini/v2chain-vps.git"
-INSTALL_DIR="$HOME/v2chain-vps"
+INSTALL_DIR="/opt/xray-manager"
 API_PORT="5000"
 XRAY_VERSION="26.2.4"
-
-fix_docker_paths() {
-  print_status "Fixing Docker volume paths..."
-
-  local DATA_DIR="$INSTALL_DIR/xray-data"
-  mkdir -p "$DATA_DIR"
-
-  # Replace /var/lib/xray with local writable directory
-  if grep -q "/var/lib/xray" "$INSTALL_DIR/docker-compose.yml"; then
-    sed -i "s|/var/lib/xray|$DATA_DIR|g" "$INSTALL_DIR/docker-compose.yml"
-    print_success "Docker volumes patched to use $DATA_DIR"
-  else
-    print_success "No restricted paths detected"
-  fi
-}
-
 
 # Generate a random API token
 generate_token() {
@@ -41,7 +25,7 @@ generate_token() {
     openssl rand -hex 32
   else
     # Fallback if openssl is not available
-    echo "fallback-token-$(date +%s)-$(head /dev/urandom | tr -dc A-Za-z0-9 | head -c 32)"
+    echo "fallback-token-$(date +%s)-$(head /dev/urandom | tr -dc A-Za-z0-9 | head -c 32 2>/dev/null || echo "manual-token-please-change")"
   fi
 }
 
@@ -62,85 +46,53 @@ print_error() {
   echo -e "${RED}[✗]${NC} $1"
 }
 
-# Setup Docker permissions
-setup_docker_permissions() {
-  print_status "Setting up Docker permissions..."
-  
-  # Check if user is in docker group
-  if id -nG "$USER" | grep -qw docker; then
-    print_success "User already in docker group"
-    return 0
-  fi
-  
-  print_warning "Adding user to docker group..."
-  sudo usermod -aG docker "$USER"
-  
-  print_warning "You need to log out and back in for changes to take effect."
-  print_warning "Alternatively, you can run: newgrp docker"
-  
-  read -p "Apply group changes now? (y/n): " -n 1 -r
-  echo
-  if [[ $REPLY =~ ^[Yy]$ ]]; then
-    # Try to apply group changes
-    if newgrp docker <<< "echo 'Docker group applied'" 2>/dev/null; then
-      print_success "Docker group applied successfully"
-    else
-      print_warning "Could not apply group changes immediately. Please log out and back in."
-    fi
-  fi
-  
-  return 0
-}
-
-# Check if Docker daemon is accessible
-check_docker_access() {
-  if docker info > /dev/null 2>&1; then
-    return 0
-  else
-    return 1
-  fi
-}
-
-# Install Docker automatically
+# Install Docker (called from check_deps)
 install_docker() {
   print_status "Installing Docker..."
   
-  # Detect OS
-  if [ -f /etc/os-release ]; then
-    . /etc/os-release
-    OS=$ID
-  else
-    print_error "Cannot detect OS"
-    exit 1
+  # Check if already installed
+  if command -v docker &> /dev/null; then
+    print_success "Docker already installed"
+    return 0
   fi
   
-  case $OS in
-    ubuntu|debian)
-      print_status "Detected Ubuntu/Debian system"
-      sudo apt-get update
-      sudo apt-get install -y apt-transport-https ca-certificates curl software-properties-common
-      curl -fsSL https://download.docker.com/linux/$OS/gpg | sudo apt-key add -
-      sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/$OS $(lsb_release -cs) stable"
-      sudo apt-get update
-      sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
-      ;;
-    centos|rhel|fedora)
-      print_status "Detected CentOS/RHEL/Fedora system"
-      sudo yum install -y yum-utils
-      sudo yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
-      sudo yum install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
-      sudo systemctl start docker
-      sudo systemctl enable docker
-      ;;
-    *)
-      print_error "Unsupported OS: $OS"
-      exit 1
-      ;;
-  esac
-  
-  # Add user to docker group
-  sudo usermod -aG docker "$USER"
-  print_success "Docker installed"
+  # Install based on OS
+  if [ -f /etc/os-release ]; then
+    . /etc/os-release
+    case $ID in
+      ubuntu|debian)
+        sudo apt-get update
+        sudo apt-get install -y apt-transport-https ca-certificates curl software-properties-common
+        curl -fsSL https://download.docker.com/linux/$ID/gpg | sudo apt-key add -
+        sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/$ID $(lsb_release -cs) stable"
+        sudo apt-get update
+        sudo apt-get install -y docker-ce docker-ce-cli containerd.io
+        ;;
+      centos|rhel|fedora)
+        sudo yum install -y yum-utils
+        sudo yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+        sudo yum install -y docker-ce docker-ce-cli containerd.io
+        ;;
+      *)
+        print_error "Unsupported OS: $ID"
+        return 1
+        ;;
+    esac
+    
+    # Start and enable Docker
+    sudo systemctl start docker
+    sudo systemctl enable docker
+    
+    # Add user to docker group
+    sudo usermod -aG docker $USER
+    print_warning "You may need to log out and back in for Docker group changes to take effect"
+    
+    print_success "Docker installed successfully"
+    return 0
+  else
+    print_error "Cannot determine OS for Docker installation"
+    return 1
+  fi
 }
 
 # Check dependencies
@@ -159,25 +111,33 @@ check_deps() {
     missing+=("docker")
   fi
   
-  # Check Docker Compose (or Docker Compose Plugin)
-  if ! command -v docker-compose &> /dev/null && ! docker compose version &> /dev/null; then
+  # Check Docker Compose (or Docker Compose plugin)
+  if ! docker compose version &> /dev/null && ! command -v docker-compose &> /dev/null; then
     missing+=("docker-compose")
   fi
   
   if [ ${#missing[@]} -gt 0 ]; then
-    print_error "Missing dependencies: ${missing[*]}"
+    print_warning "Missing dependencies: ${missing[*]}"
     
     for dep in "${missing[@]}"; do
       case $dep in
         git)
           print_status "Installing Git..."
-          sudo apt-get install -y git 2>/dev/null || sudo yum install -y git 2>/dev/null
+          sudo apt-get install -y git 2>/dev/null || sudo yum install -y git 2>/dev/null || {
+            print_error "Failed to install Git"
+            exit 1
+          }
+          print_success "Git installed"
           ;;
         docker)
+          print_warning "Docker is required"
           read -p "Install Docker automatically? (y/n): " -n 1 -r
           echo
           if [[ $REPLY =~ ^[Yy]$ ]]; then
-            install_docker
+            install_docker || {
+              print_error "Docker installation failed"
+              exit 1
+            }
           else
             print_error "Docker is required. Please install it manually."
             exit 1
@@ -185,44 +145,35 @@ check_deps() {
           ;;
         docker-compose)
           print_status "Installing Docker Compose..."
-          if command -v docker &> /dev/null && docker compose version &> /dev/null; then
+          if docker compose version &> /dev/null; then
             print_success "Docker Compose plugin already available"
           else
-            sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" \
+            # Install Docker Compose standalone
+            DOCKER_COMPOSE_VERSION=$(curl -s https://api.github.com/repos/docker/compose/releases/latest | grep tag_name | cut -d'"' -f4)
+            sudo curl -L "https://github.com/docker/compose/releases/download/${DOCKER_COMPOSE_VERSION}/docker-compose-$(uname -s)-$(uname -m)" \
               -o /usr/local/bin/docker-compose
             sudo chmod +x /usr/local/bin/docker-compose
+            print_success "Docker Compose installed"
           fi
           ;;
       esac
     done
   fi
   
-  # Check Docker permissions
-  if ! check_docker_access; then
-    setup_docker_permissions
-    
-    # Check again
-    if ! check_docker_access; then
-      print_warning "Still cannot access Docker. Trying with sudo..."
-      if sudo docker info > /dev/null 2>&1; then
-        print_warning "Docker accessible with sudo. Some operations may require sudo."
-      else
-        print_error "Cannot access Docker daemon. Please ensure Docker is running and permissions are set."
-        exit 1
-      fi
-    fi
-  fi
-  
   print_success "All dependencies satisfied"
 }
 
+# Install Xray
 install_xray() {
   print_status "Installing Xray $XRAY_VERSION..."
 
   # Ensure unzip exists
   if ! command -v unzip &> /dev/null; then
     print_status "Installing unzip..."
-    sudo apt-get install -y unzip 2>/dev/null || sudo yum install -y unzip 2>/dev/null
+    sudo apt-get install -y unzip 2>/dev/null || sudo yum install -y unzip 2>/dev/null || {
+      print_error "Failed to install unzip"
+      exit 1
+    }
   fi
 
   # Create directories
@@ -291,7 +242,7 @@ EOF
   sudo systemctl restart xray
 
   # Verify
-  if xray version | grep -q "$XRAY_VERSION"; then
+  if xray version 2>/dev/null | grep -q "$XRAY_VERSION"; then
     print_success "Xray $XRAY_VERSION installed successfully"
   else
     print_warning "Xray installed but version check failed"
@@ -302,6 +253,7 @@ EOF
   rm -rf "$TEMP_DIR"
 }
 
+# Setup Xray directories
 setup_xray_dirs() {
   print_status "Checking Xray installation..."
   if command -v xray &> /dev/null; then
@@ -318,12 +270,10 @@ setup_xray_dirs() {
   fi
 }
 
+# Setup Xray config
 setup_xray_config() {
   print_status "Setting up Xray configuration files..."
 
-  mkdir -p ~/xray/configs
-
-  ln /usr/local/etc/xray/config.json  ~/xray/configs/config.json  
   # Create directories
   sudo mkdir -p /etc/xray /usr/local/etc/xray /var/lib/xray
   
@@ -346,6 +296,8 @@ setup_xray_config() {
 }
 EOF
     print_success "Created /etc/xray/config.json"
+  else
+    print_success "Xray config already exists"
   fi
   
   # Copy to /usr/local/etc/xray for backward compatibility
@@ -382,68 +334,10 @@ get_code() {
   fi
   
   cd "$INSTALL_DIR"
+  sudo chown -R xray-manager:xray-manager "$INSTALL_DIR" 2>/dev/null || true
 }
 
-# Build Docker image
-build_image() {
-  print_status "Building Docker image..."
-  cd "$INSTALL_DIR"
-  
-  # Check if we can access Docker
-  if check_docker_access; then
-    if docker-compose build --no-cache; then
-      print_success "Docker image built successfully"
-    else
-      print_warning "Failed to build with docker-compose, trying with sudo..."
-      if sudo docker-compose build --no-cache; then
-        print_success "Docker image built with sudo"
-      else
-        print_error "Failed to build Docker image"
-        exit 1
-      fi
-    fi
-  elif sudo docker info > /dev/null 2>&1; then
-    print_warning "Building with sudo..."
-    if sudo docker-compose build --no-cache; then
-      print_success "Docker image built with sudo"
-    else
-      print_error "Failed to build Docker image"
-      exit 1
-    fi
-  else
-    print_error "Cannot access Docker daemon"
-    exit 1
-  fi
-}
-
-configure_docker_dns() {
-  print_status "Configuring Docker DNS..."
-
-  sudo mkdir -p /etc/docker
-
-  sudo tee /etc/docker/daemon.json > /dev/null << 'EOF'
-{
-  "dns": ["8.8.8.8", "1.1.1.1"]
-}
-EOF
-
-  # Try to restart Docker in multiple environments
-  if command -v systemctl > /dev/null 2>&1; then
-    sudo systemctl restart docker 2>/dev/null || true
-  fi
-
-  if command -v service > /dev/null 2>&1; then
-    sudo service docker restart 2>/dev/null || true
-  fi
-
-  if command -v snap > /dev/null 2>&1 && snap list docker >/dev/null 2>&1; then
-    sudo snap restart docker 2>/dev/null || true
-  fi
-
-  print_success "Docker DNS configured"
-}
-
-
+# Create Xray config
 create_xray_config() {
   print_status "Ensuring Xray config exists..."
   
@@ -470,13 +364,13 @@ EOF
   sudo ln -sf /etc/xray/config.json /usr/local/etc/xray/config.json 2>/dev/null || true
 
   # Set permissions
-  sudo chown -R "$USER:$USER" /etc/xray /usr/local/etc/xray /var/lib/xray
+  sudo chown -R "$USER:$USER" /etc/xray /usr/local/etc/xray /var/lib/xray 2>/dev/null || true
   sudo chmod 755 /etc/xray /usr/local/etc/xray /var/lib/xray
 
   print_success "Xray config ready"
 }
 
-
+# Install Node.js
 install_node() {
   print_status "Installing Node.js..."
 
@@ -485,39 +379,86 @@ install_node() {
     return
   fi
 
-  curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-  sudo apt-get install -y nodejs
+  # Check OS for Node installation
+  if [ -f /etc/os-release ]; then
+    . /etc/os-release
+    case $ID in
+      ubuntu|debian)
+        curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+        sudo apt-get install -y nodejs
+        ;;
+      centos|rhel|fedora)
+        curl -fsSL https://rpm.nodesource.com/setup_20.x | sudo bash -
+        sudo yum install -y nodejs
+        ;;
+      *)
+        print_error "Unsupported OS for automatic Node installation: $ID"
+        print_warning "Please install Node.js 20.x manually"
+        exit 1
+        ;;
+    esac
+  else
+    print_error "Cannot determine OS for Node installation"
+    exit 1
+  fi
 
   print_success "Node installed: $(node -v)"
 }
 
+# Build backend
 build_backend() {
   print_status "Building backend..."
 
   cd "$INSTALL_DIR"
 
-  npm ci
-  npm run build
-
-  print_success "Backend built"
-}
-
-create_service_user() {
-  print_status "Creating service user..."
-
-  if id "xray-manager" >/dev/null 2>&1; then
-    print_success "User exists"
-    return
+  # Check if package.json exists
+  if [ ! -f package.json ]; then
+    print_error "package.json not found in $INSTALL_DIR"
+    exit 1
   fi
 
-  sudo useradd -r -s /bin/false xray-manager
-  sudo chown -R xray-manager:xray-manager "$INSTALL_DIR"
+  # Install dependencies
+  if npm ci; then
+    print_success "Dependencies installed"
+  else
+    print_warning "npm ci failed, trying npm install..."
+    npm install || {
+      print_error "Failed to install dependencies"
+      exit 1
+    }
+  fi
 
-  print_success "User created"
+  # Build
+  if npm run build; then
+    print_success "Backend built"
+  else
+    print_error "Build failed"
+    exit 1
+  fi
 }
 
+# Create service user (renamed to avoid duplicate function)
+setup_service_user() {
+  if id "xray-manager" &>/dev/null; then
+    print_success "Service user exists"
+  else
+    print_status "Creating service user..."
+    sudo useradd --system --no-create-home --shell /usr/sbin/nologin xray-manager || {
+      print_error "Failed to create service user"
+      exit 1
+    }
+    print_success "Service user created"
+  fi
+}
+
+# Create systemd service
 create_systemd_service() {
   print_status "Creating systemd service..."
+
+  # Ensure directory exists with correct permissions
+  sudo mkdir -p "$INSTALL_DIR"
+  sudo chown -R xray-manager:xray-manager "$INSTALL_DIR" 2>/dev/null || true
+  sudo chmod 755 "$INSTALL_DIR"
 
   sudo tee /etc/systemd/system/xray-manager.service > /dev/null << EOF
 [Unit]
@@ -528,7 +469,7 @@ After=network.target
 Type=simple
 User=xray-manager
 WorkingDirectory=$INSTALL_DIR
-ExecStart=/usr/bin/node dist/index.js
+ExecStart=/usr/bin/node dist/app.js
 Restart=always
 RestartSec=5
 
@@ -552,6 +493,7 @@ EOF
   print_success "Service installed and started"
 }
 
+# Start backend and check health
 start_backend() {
   print_status "Checking backend health..."
 
@@ -566,8 +508,6 @@ start_backend() {
 
   print_warning "Backend might still be starting"
 }
-
-
 
 # Create environment file
 create_env() {
@@ -589,61 +529,7 @@ EOF
   echo "  Save this token for API authentication!"
 }
 
-# Start services
-start_services() {
-  print_status "Starting services..."
-  cd "$INSTALL_DIR"
-  
-  # Stop if already running
-  docker-compose down 2>/dev/null || sudo docker-compose down 2>/dev/null || true
-  
-  # Start services
-  if check_docker_access; then
-    docker-compose up -d
-  else
-    sudo docker-compose up -d
-  fi
-  
-  # Wait for service to start
-print_status "Waiting for service to start..."
-for i in {1..10}; do
-  if curl -s "http://localhost:$API_PORT/health" > /dev/null 2>&1; then
-    print_success "Service is running!"
-    return 0
-  fi
-  echo -n "."
-  sleep 2
-done
-
-  
-  print_warning "Service might be slow to start. Checking container status..."
-  
-  # Check container status
-  if check_docker_access; then
-    docker-compose ps
-  else
-    sudo docker-compose ps
-  fi
-  
-  print_warning "If the service is not running, check logs with: docker-compose logs"
-}
-
-# Show success message
-show_success() {
-  local api_token
-  if [ -f "$INSTALL_DIR/.env" ]; then
-    api_token=$(grep API_STATIC_TOKEN "$INSTALL_DIR/.env" | cut -d= -f2)
-  else
-    api_token="[NOT FOUND - check .env file]"
-  fi
-  
-  echo ""
-  echo "🎉 Xray Manager Installation Complete!"
-  echo "======================================"
-
-}
-
-
+# Create initial config (simplified version)
 create_initial_config() {
   print_status "Creating initial Xray configuration..."
   
@@ -654,7 +540,6 @@ create_initial_config() {
   if [ ! -f /etc/xray/config.json ]; then
     print_status "Creating /etc/xray/config.json..."
     
-    # Create config (simplified version)
     sudo tee /etc/xray/config.json > /dev/null << 'EOF'
 {
   "log": {
@@ -686,7 +571,30 @@ EOF
   print_success "Xray directories and config setup complete"
 }
 
-
+# Show success message
+show_success() {
+  local api_token
+  if [ -f "$INSTALL_DIR/.env" ]; then
+    api_token=$(grep API_STATIC_TOKEN "$INSTALL_DIR/.env" | cut -d= -f2)
+  else
+    api_token="[NOT FOUND - check .env file]"
+  fi
+  
+  echo ""
+  echo "🎉 Xray Manager Installation Complete!"
+  echo "======================================"
+  echo ""
+  echo "📊 Backend API: http://localhost:$API_PORT"
+  echo "🔑 API Token: $api_token"
+  echo "📁 Installation directory: $INSTALL_DIR"
+  echo ""
+  echo "📋 Next steps:"
+  echo "   1. Save your API token: $api_token"
+  echo "   2. Access the dashboard at http://your-server-ip:$API_PORT"
+  echo "   3. Check logs: sudo journalctl -u xray-manager -f"
+  echo "   4. Check Xray: sudo systemctl status xray"
+  echo ""
+}
 
 # Main installation flow
 main() {
@@ -694,42 +602,35 @@ main() {
   
   # Step 1: Check dependencies
   check_deps
-
   
-  # Step 2: Setup Xray directories
+  # Step 2: Setup Xray
   setup_xray_dirs
-
   create_xray_config
-
   create_initial_config
-
   setup_xray_config
   
-  # Step 3: Get source code
+  # Step 3: Setup service user
+  setup_service_user
+  
+  # Step 4: Get source code
   get_code
-
-  # fix docker volumes
   
-# Step 4: Install Node
-install_node
-
-# Step 5: Create environment
-create_env
-
-# Step 6: Build backend
-build_backend
-
-# Step 7: Create service user
-create_service_user
-
-# Step 8: Create systemd service
-create_systemd_service
-
-# Step 9: Start backend
-start_backend
-
+  # Step 5: Install Node
+  install_node
   
-  # Step 7: Show success
+  # Step 6: Create environment
+  create_env
+  
+  # Step 7: Build backend
+  build_backend
+  
+  # Step 8: Create systemd service
+  create_systemd_service
+  
+  # Step 9: Start backend
+  start_backend
+  
+  # Step 10: Show success
   show_success
   
   echo -e "${GREEN}Installation completed successfully!${NC}"
@@ -745,4 +646,3 @@ trap cleanup INT TERM
 
 # Run installation
 main "$@"
-
