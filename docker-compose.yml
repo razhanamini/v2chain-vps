@@ -14,5 +14,8 @@ services:
       - XRAY_CONFIG_PATH=/app/config/config.json
     volumes:
       # Mount to app directory instead of system directory
-      - /etc/xray/config.json:/app/config/config.json:rw
+      - ~/xray/configs/config.json:/app/config/config.json:rw
     network_mode: "host"
+
+
+

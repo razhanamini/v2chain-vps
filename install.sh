@@ -320,7 +320,10 @@ setup_xray_dirs() {
 
 setup_xray_config() {
   print_status "Setting up Xray configuration files..."
-  
+
+  mkdir -p ~/xray/configs
+
+  ln /usr/local/etc/xray/config.json  ~/xray/configs/config.json  
   # Create directories
   sudo mkdir -p /etc/xray /usr/local/etc/xray /var/lib/xray
   
@@ -512,7 +515,7 @@ start_services() {
   
   # Wait for service to start
   print_status "Waiting for service to start..."
-  for i in {1..10}; do
+  for i setup_xray_dirsin {1..10}; do
     if curl -s "http://localhost:$API_PORT/health" > /dev/null 2>&1; then
       print_success "Service is running!"
       return 0
