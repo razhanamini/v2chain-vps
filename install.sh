@@ -475,6 +475,7 @@ RestartSec=5
 
 Environment=NODE_ENV=production
 Environment=PORT=$API_PORT
+Environment=XRAY_CONFIG_PATH=/etc/xray/config.json
 
 # security hardening
 NoNewPrivileges=true
