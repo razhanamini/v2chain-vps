@@ -3,7 +3,7 @@ import { SudoUtils } from '../utils/sudo.utils';
 import { XrayConfig, XrayStatus } from '../types';
 
 export class XrayService {
-  private static readonly XRAY_CONFIG_PATH = process.env.XRAY_CONFIG_PATH || "/etc/xray/config.json";
+  private static readonly XRAY_CONFIG_PATH = "/etc/xray/config.json";
   private static readonly XRAY_CONFIG_BACKUP= "/opt/xray-manager/data/config.json";
   
   static async getConfig(): Promise<XrayConfig> {
