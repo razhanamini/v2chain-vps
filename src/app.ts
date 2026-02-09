@@ -4,7 +4,7 @@ import routes from './routes';
 
 const app = express();
 const PORT = 5000;
-  const XRAY_CONFIG_PATH = process.env.XRAY_CONFIG_PATH!;
+  const XRAY_CONFIG_PATH = process.env.XRAY_CONFIG_PATH || "/etc/xray/config.json";
 
 // Middleware
 app.use(cors());

@@ -4,6 +4,7 @@ import { XrayConfig, XrayStatus } from '../types';
 
 export class XrayService {
   private static readonly XRAY_CONFIG_PATH = process.env.XRAY_CONFIG_PATH || "/etc/xray/config.json";
+  private static readonly XRAY_CONFIG_BACKUP= "/opt/xray-manager/data/config.json";
   
   static async getConfig(): Promise<XrayConfig> {
     const configData = await SudoUtils.readFileWithSudo(this.XRAY_CONFIG_PATH);
@@ -11,7 +12,7 @@ export class XrayService {
   }
   
   static async updateConfig(config: XrayConfig): Promise<string> {
-    const backupPath = `${this.XRAY_CONFIG_PATH}.backup.${Date.now()}`;
+    const backupPath = `${this.XRAY_CONFIG_BACKUP}.backup.${Date.now()}`;
     await SudoUtils.executeSudoCommand(`cp ${this.XRAY_CONFIG_PATH} ${backupPath}`);
     
     await SudoUtils.writeFileWithSudo(
