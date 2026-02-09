@@ -514,15 +514,16 @@ start_services() {
   fi
   
   # Wait for service to start
-  print_status "Waiting for service to start..."
-  for i setup_xray_dirsin {1..10}; do
-    if curl -s "http://localhost:$API_PORT/health" > /dev/null 2>&1; then
-      print_success "Service is running!"
-      return 0
-    fi
-    echo -n "."
-    sleep 2
-  done
+print_status "Waiting for service to start..."
+for i in {1..10}; do
+  if curl -s "http://localhost:$API_PORT/health" > /dev/null 2>&1; then
+    print_success "Service is running!"
+    return 0
+  fi
+  echo -n "."
+  sleep 2
+done
+
   
   print_warning "Service might be slow to start. Checking container status..."
   
